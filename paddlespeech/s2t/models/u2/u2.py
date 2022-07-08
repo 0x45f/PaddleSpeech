@@ -59,6 +59,21 @@ __all__ = ["U2Model", "U2InferModel"]
 logger = Log(__name__).getlog()
 
 
+input_spec1 = [paddle.static.InputSpec(shape=[None, None], dtype='int64'), 
+              paddle.static.InputSpec(shape=[None], dtype='int64'), 
+              paddle.static.InputSpec(shape=[1, None, 256], dtype='float32')]
+
+input_spec2 = [
+    paddle.static.InputSpec(shape=[None, None, 80], dtype='float32'), 
+    paddle.static.InputSpec(shape=[1], dtype='int32'), 
+    -16,
+    paddle.static.InputSpec(shape=[None, None, 256], dtype='float32'), 
+    [paddle.static.InputSpec(shape=[None, None, 256], dtype='float32') for i in range(12)], 
+    [paddle.static.InputSpec(shape=[None, 256, None], dtype='float32') for i in range(12)]]
+
+input_spec3 = [paddle.static.InputSpec(shape=[1, 1, 1], dtype='int64'), 
+               paddle.static.InputSpec(shape=[1], dtype='int64')]
+
 class U2BaseModel(ASRInterface, nn.Layer):
     """CTC-Attention hybrid Encoder-Decoder model"""
 
@@ -599,7 +614,7 @@ class U2BaseModel(ASRInterface, nn.Layer):
         """
         return self.eos
 
-    @jit.to_static
+    # @jit.to_static(input_spec=input_spec2)
     def forward_encoder_chunk(
             self,
             xs: paddle.Tensor,
@@ -640,7 +655,7 @@ class U2BaseModel(ASRInterface, nn.Layer):
         """
         return self.ctc.log_softmax(xs)
 
-    @jit.to_static
+    # @jit.to_static(input_spec=input_spec1)
     def forward_attention_decoder(
             self,
             hyps: paddle.Tensor,
@@ -903,6 +918,7 @@ class U2InferModel(U2Model):
     def __init__(self, configs: dict):
         super().__init__(configs)
 
+    # @jit.to_static(input_spec=input_spec3)
     def forward(self,
                 feats,
                 feats_lengths,
@@ -918,9 +934,10 @@ class U2InferModel(U2Model):
         Returns:
             List[List[int]]: best path result
         """
-        return self.ctc_greedy_search(
-            feats,
-            feats_lengths,
-            decoding_chunk_size=decoding_chunk_size,
-            num_decoding_left_chunks=num_decoding_left_chunks,
-            simulate_streaming=simulate_streaming)
+        # return self.ctc_greedy_search(
+        #     feats,
+        #     feats_lengths,
+        #     decoding_chunk_size=decoding_chunk_size,
+        #     num_decoding_left_chunks=num_decoding_left_chunks,
+        #     simulate_streaming=simulate_streaming)
+        return feats, feats_lengths

@@ -159,10 +159,10 @@ if not hasattr(paddle.Tensor, 'new_full'):
 def eq(xs: paddle.Tensor, ys: Union[paddle.Tensor, float]) -> paddle.Tensor:
     if convert_dtype_to_string(xs.dtype) == paddle.bool:
         xs = xs.astype(paddle.int)
-    return xs.equal(
-        paddle.to_tensor(
-            ys, dtype=convert_dtype_to_string(xs.dtype), place=xs.place))
-
+    # return xs.equal(
+    #     paddle.to_tensor(
+    #         ys, dtype=convert_dtype_to_string(xs.dtype), place=xs.place))
+    return xs.equal(ys)
 
 if not hasattr(paddle.Tensor, 'eq'):
     logger.debug(
@@ -219,14 +219,36 @@ def is_broadcastable(shp1, shp2):
     return True
 
 
+# def masked_fill(xs: paddle.Tensor,
+#                 mask: paddle.Tensor,
+#                 value: Union[float, int]):
+#     assert is_broadcastable(xs.shape, mask.shape) is True, (xs.shape,
+#                                                             mask.shape)
+#     bshape = paddle.broadcast_shape(xs.shape, mask.shape)
+#     mask = mask.broadcast_to(bshape)
+#     trues = paddle.ones_like(xs) * value
+#     xs = paddle.where(mask, trues, xs)
+#     return xs
+
+def broadcast_shape(shp1, shp2):
+    result = []
+    for a, b in zip(shp1[::-1], shp2[::-1]):
+        result.append(max(a, b))
+    return result[::-1]
+
+
 def masked_fill(xs: paddle.Tensor,
                 mask: paddle.Tensor,
                 value: Union[float, int]):
-    assert is_broadcastable(xs.shape, mask.shape) is True, (xs.shape,
-                                                            mask.shape)
-    bshape = paddle.broadcast_shape(xs.shape, mask.shape)
-    mask = mask.broadcast_to(bshape)
+    bshape = broadcast_shape(xs.shape, mask.shape)
+    # mask.stop_gradient = True
+    tmp = paddle.ones(shape=[len(bshape)], dtype='int32')
+    for index in range(len(bshape)):
+        tmp[index] = bshape[index]
+    # broadcast_to中调用expand_v2，shape只能是int32 ?
+    mask = mask.broadcast_to(tmp)
     trues = paddle.ones_like(xs) * value
+    # mask = mask.cast(dtype=paddle.bool)
     xs = paddle.where(mask, trues, xs)
     return xs
 

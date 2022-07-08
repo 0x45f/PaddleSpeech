@@ -541,6 +541,109 @@ class U2Tester(U2Trainer):
         infer_model, input_spec = self.load_inferspec()
         assert isinstance(input_spec, list), type(input_spec)
         infer_model.eval()
-        static_model = paddle.jit.to_static(infer_model, input_spec=input_spec)
-        logger.info(f"Export code: {static_model.forward.code}")
-        paddle.jit.save(static_model, self.args.export_path)
+        # static_model = paddle.jit.to_static(infer_model, input_spec=input_spec)
+        # logger.info(f"Export code: {static_model.forward.code}")
+        # paddle.jit.save(static_model, self.args.export_path)
+
+
+        def flatten(out):
+            if isinstance(out, paddle.Tensor):
+                return [out]
+            
+            flatten_out = []
+            for var in out:
+                if isinstance(var, (list, tuple)):
+                    flatten_out.extend(flatten(var))
+                else:
+                    flatten_out.append(var)
+            return flatten_out
+
+        
+        # ######################### infer_model.forward_attention_decoder ########################
+        # a = paddle.full(shape=[10, 8], fill_value=10, dtype='int64')
+        # b = paddle.full(shape=[10], fill_value=8, dtype='int64')
+        # c =  paddle.rand(shape=[1, 20, 256], dtype='float32')
+
+        # out1 = infer_model.forward_attention_decoder(a, b, c)
+        # print(out1)
+
+        # input_spec = [paddle.static.InputSpec(shape=[None, None], dtype='int64'), 
+        #               paddle.static.InputSpec(shape=[None], dtype='int64'), 
+        #               paddle.static.InputSpec(shape=[1, None, 256], dtype='float32')]
+        # static_model = paddle.jit.to_static(infer_model.forward_attention_decoder, input_spec=input_spec)
+        # paddle.jit.save(static_model, self.args.export_path)
+        # static_model = paddle.jit.load(self.args.export_path)
+        # out2 = static_model(a, b, c)
+        # # print(out2)
+
+        # out1 = flatten(out1)
+        # out2 = flatten(out2)
+        # for i in range(len(out1)):
+        #     print(np.equal(out1[i].numpy(), out2[i].numpy()).all())
+
+
+        # ######################### infer_model.forward_encoder_chunk ########################
+        # xs =  paddle.rand(shape=[1, 67, 80], dtype='float32')
+        # offset = paddle.to_tensor([256], dtype='int32')
+        # required_cache_size = -16
+        # subsampling_cache = paddle.randn(shape=[1, 240, 256], dtype='float32')
+        # elayers_output_cache = [paddle.randn(shape=[1, 240, 256], dtype='float32') for i in range(12)]
+        # conformer_cnn_cache = [paddle.randn(shape=[1, 256, 14], dtype='float32') for i in range(12)]
+        
+        # out1 = infer_model.forward_encoder_chunk(xs, offset, required_cache_size, subsampling_cache, elayers_output_cache, conformer_cnn_cache)
+        # print(out1)
+
+        # input_spec = [
+        #     paddle.static.InputSpec(shape=[None, None, 80], dtype='float32'), 
+        #     paddle.static.InputSpec(shape=[1], dtype='int32'), 
+        #     -16,
+        #     paddle.static.InputSpec(shape=[None, None, 256], dtype='float32'), 
+        #     [paddle.static.InputSpec(shape=[None, None, 256], dtype='float32') for i in range(12)], 
+        #     [paddle.static.InputSpec(shape=[None, 256, None], dtype='float32') for i in range(12)]]
+        # static_model = paddle.jit.to_static(infer_model.forward_encoder_chunk, input_spec=input_spec)
+        # paddle.jit.save(static_model, self.args.export_path)
+        # static_model = paddle.jit.load(self.args.export_path)
+        # out2 = static_model(xs, offset, subsampling_cache, *elayers_output_cache, *conformer_cnn_cache)
+        # # print(out2)
+
+        # out1 = flatten(out1)
+        # out2 = flatten(out2)
+        # for i in range(len(out1)):
+        #     print(np.equal(out1[i].numpy(), out2[i].numpy()).all())
+
+
+        ######################### save/load combine ########################
+        a = paddle.full(shape=[10, 8], fill_value=10, dtype='int64')
+        b = paddle.full(shape=[10], fill_value=8, dtype='int64')
+        c =  paddle.rand(shape=[1, 20, 256], dtype='float32')
+
+        dy_out1 = infer_model.forward_attention_decoder(a, b, c)
+        dy_out1 = flatten(dy_out1)
+        # print(dy_out1)
+
+        xs =  paddle.rand(shape=[1, 67, 80], dtype='float32')
+        offset = paddle.to_tensor([256], dtype='int32')
+        required_cache_size = -16
+        subsampling_cache = paddle.randn(shape=[1, 240, 256], dtype='float32')
+        elayers_output_cache = [paddle.randn(shape=[1, 240, 256], dtype='float32') for i in range(12)]
+        conformer_cnn_cache = [paddle.randn(shape=[1, 256, 14], dtype='float32') for i in range(12)]
+        
+        dy_out2 = infer_model.forward_encoder_chunk(xs, offset, required_cache_size, subsampling_cache, elayers_output_cache, conformer_cnn_cache)
+        dy_out2 = flatten(dy_out2)
+        # print(dy_out2)
+
+        # paddle.jit.save(infer_model, '/workspace/conformer/PaddleSpeech-conformer/conformer/conformer', combine_params=True)
+        # Now must run in old dygraph mode
+        from paddle.jit.layer import Layer
+        layer = Layer()
+        layer.load('/workspace/conformer/PaddleSpeech-conformer/conformer/conformer', paddle.CUDAPlace(0))
+        st_out1 = layer.forward_attention_decoder(a, b, c)
+        st_out1 = flatten(st_out1)
+        for i in range(len(dy_out1)):
+            print(np.equal(dy_out1[i].numpy(), st_out1[i].numpy()).all())
+
+
+        st_out2 = layer.forward_encoder_chunk(xs, offset, subsampling_cache, *elayers_output_cache, *conformer_cnn_cache)
+        st_out2 = flatten(st_out2)
+        for i in range(len(dy_out2)):
+            print(np.equal(dy_out2[i].numpy(), st_out2[i].numpy()).all())
